@@ -108,8 +108,7 @@ def get_phone(chat_id):
 def send_location(chat_id):
     keyboard_texts = get_text(chat_id)
     keyboard = tbt.ReplyKeyboardMarkup(True, False)
-    keyboard.add(tbt.KeyboardButton(keyboard_texts['send_location'], request_location=True))
-    keyboard.add(tbt.KeyboardButton(keyboard_texts['back']))    
+    keyboard.add(tbt.KeyboardButton(keyboard_texts['send_location'], request_location=True))   
     return keyboard
 
 

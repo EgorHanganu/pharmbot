@@ -9,6 +9,7 @@ import re
 import datetime
 import json
 import os
+from geopy.geocoders import Nominatim
 from utils import *
 
 bot = telebot.TeleBot(config.telegram_token)
@@ -45,6 +46,7 @@ def cart_handler(message):
         cart.query('update', to_update=f'ordered=1, _date="{datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}"', condition=f'telegram_id={chat_id} AND ordered=0')
         res = moysklad.send_order(moysklad._get_counterparty_link(chat_id), positions)
         return bot.send_message(chat_id, txts['thank_you'], reply_markup=keyboards.main_menu(chat_id))
+    bot.register_next_step_handler(message, cart_handler)
 
 def get_cart(message, prev_keyboard, *args):
     chat_id = message.chat.id
@@ -73,7 +75,7 @@ def count_handler(message, metaentity, group, price):
         return bot.send_message(chat_id, txts['temporarily_unavailable'], reply_markup=keyboards.order_list(chat_id))
     if message.text == txts['cart']:
         return get_cart(message, keyboards.get_product_counter_keyboard(chat_id), count_handler, metaentity, group, price)
-    if message.text.replace(' ', '').isdigit() and int(message.text.replace(' ', '')) <= 20 and int(message.text.replace(' ', '')) > 0:
+    if message.content_type == 'text' and message.text.replace(' ', '').isdigit() and int(message.text.replace(' ', '')) <= 20 and int(message.text.replace(' ', '')) > 0:
         existed_prod = cart.query('select', columns=['query_dict'], condition=f'telegram_id={chat_id} AND ordered=0 AND product_name_sys="{metaentity["name"]}"', fetchall=0)
         if not existed_prod:
             quantity = int(message.text.replace(' ', ''))
@@ -92,7 +94,7 @@ def count_handler(message, metaentity, group, price):
             return bot.send_message(chat_id, txts['added_success'], reply_markup=product_keyboard)
         bot.register_next_step_handler(message, handle_category)
         return bot.send_message(chat_id, txts['temporarily_unavailable'], reply_markup=keyboards.order_list(chat_id))
-    elif message.text.replace(' ', '').isdigit() and int(message.text.replace(' ', '')) > 20:
+    elif message.content_type == 'text' and message.text.replace(' ', '').isdigit() and int(message.text.replace(' ', '')) > 20:
         bot.send_message(chat_id, txts['no_more_than_20'])
     else:
         bot.send_message(chat_id, txts['invalid_format_product'])
@@ -172,13 +174,19 @@ def get_phone(message, name, address):
 def get_address(message, name):
     chat_id = message.chat.id
     txts = get_text(chat_id)
-    if message.text == '/start' or message.content_type != 'text':
+    if message.text == '/start':
         bot.register_next_step_handler(message, get_address, name)
-        return bot.send_message(chat_id, txts['get_address'])        
-    address = message.text.strip().replace('"', '').replace("'", '')
-    if len(address) > 200:
-        bot.register_next_step_handler(message, get_address)
-        return bot.send_message(chat_id, txts['address_not_more'])
+        return bot.send_message(chat_id, txts['get_address'])
+    if message.content_type == 'location':
+        geolocator = Nominatim(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.114 Safari/537.36")
+        address = geolocator.reverse(str(message.location.latitude) + ', ' + str(message.location.longitude)).address
+    elif message.content_type == 'text':
+        address = message.text.strip().replace('"', '').replace("'", '')
+        if len(address) > 200:
+            bot.register_next_step_handler(message, get_address, name)
+            return bot.send_message(chat_id, txts['address_not_more'])
+    else:
+        return bot.register_next_step_handler(message, get_address, name)
     bot.register_next_step_handler(message, get_phone, name, address)
     return bot.send_message(chat_id, txts['get_phone'], reply_markup=keyboards.get_phone(chat_id))    
 
@@ -193,7 +201,7 @@ def get_name(message):
         bot.register_next_step_handler(message, get_name)
         return bot.send_message(chat_id, txts['name_not_more'])
     bot.register_next_step_handler(message, get_address, name)
-    return bot.send_message(chat_id, txts['get_address'])
+    return bot.send_message(chat_id, txts['get_address'], reply_markup=keyboards.send_location(chat_id))
 
 def get_language(message):
     chat_id = message.chat.id
